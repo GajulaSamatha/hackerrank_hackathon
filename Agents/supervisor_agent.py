@@ -184,7 +184,7 @@ class SimpleImageReviewTool:
             if not path.name:
                 continue
             if path.suffix.lower() in self.VALID_EXTENSIONS:
-                supporting_ids.append(path.name)
+                supporting_ids.append(path.stem)
                 lowered = path.name.lower()
                 if interpretation.issue_type != "unknown" and interpretation.issue_type in lowered:
                     detected_issue = interpretation.issue_type
@@ -390,13 +390,13 @@ class SupervisorAgent:
     @staticmethod
     def _determine_status(evidence: EvidenceCheck, risk_flags: Sequence[str], history_rationale: str) -> tuple[str, str]:
         if not evidence.evidence_standard_met:
-            return "manual_review", f"{evidence.evidence_standard_met_reason} Sent to manual review for additional verification."
+            return "not_enough_information", evidence.evidence_standard_met_reason
 
-        high_risk = {"fraud_suspected", "high_prior_rejections", "issue_image_claim_mismatch", "object_part_image_claim_mismatch"}
-        if any(flag in high_risk for flag in risk_flags):
-            return "manual_review", f"Evidence is sufficient, but elevated risk flags require manual review. {history_rationale}"
+        conflict_flags = {"issue_image_claim_mismatch", "object_part_image_claim_mismatch"}
+        if any(flag in conflict_flags for flag in risk_flags):
+            return "contradicted", f"Evidence or history contradicts the claim. {history_rationale}"
 
-        return "approved", "Evidence meets policy and no critical risk flags were detected."
+        return "supported", "Evidence meets policy and visual findings support the claim."
 
 
 __all__ = [
