@@ -1,9 +1,9 @@
 import unittest
 
-from Agents.supervisor_agent import ClaimInput, SupervisorAgent
+from agents.supervisor_agent import ClaimInput, SupervisorAgent
 
 
-class SupervisorAgentTests(unittest.TestCase):
+class TestSupervisorAgent(unittest.TestCase):
     def setUp(self) -> None:
         self.agent = SupervisorAgent()
 
@@ -40,7 +40,20 @@ class SupervisorAgentTests(unittest.TestCase):
         self.assertFalse(output.evidence_standard_met)
         self.assertEqual(output.claim_status, "manual_review")
         self.assertFalse(output.valid_image)
-        self.assertIn("No valid images provided", output.evidence_standard_met_reason)
+        self.assertEqual(output.evidence_standard_met_reason, "No valid images provided.")
+
+    def test_normalizes_delimited_image_paths(self) -> None:
+        row = {
+            "user_id": "u3",
+            "image_paths": "a.jpg, b.png | c.jpeg",
+            "user_claim": "Customer: rear bumper dent reported.",
+            "claim_object": "car",
+        }
+
+        output = self.agent.evaluate_claim_row(row)
+
+        self.assertTrue(output.valid_image)
+        self.assertEqual(output.supporting_image_ids, ("a.jpg", "b.png", "c.jpeg"))
 
 
 if __name__ == "__main__":

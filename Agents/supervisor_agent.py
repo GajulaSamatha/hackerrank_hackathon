@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence
+import re
+from typing import Any, ClassVar, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence
 
 
 @dataclass(frozen=True)
@@ -114,13 +115,13 @@ class EvidenceRequirementTool(Protocol):
 class SimpleClaimInterpretationTool:
     """Deterministic fallback claim interpretation tool."""
 
-    ISSUE_KEYWORDS: Dict[str, Iterable[str]] = {
+    ISSUE_KEYWORDS: ClassVar[Dict[str, tuple[str, ...]]] = {
         "dent": ("dent",),
         "scratch": ("scratch", "scrape"),
         "crack": ("crack", "broken"),
         "theft": ("stolen", "theft", "missing"),
     }
-    PART_KEYWORDS: Dict[str, Iterable[str]] = {
+    PART_KEYWORDS: ClassVar[Dict[str, tuple[str, ...]]] = {
         "rear bumper": ("rear bumper", "back bumper"),
         "front bumper": ("front bumper",),
         "door": ("door",),
@@ -136,11 +137,11 @@ class SimpleClaimInterpretationTool:
         object_part = self._match_keyword(lower, self.PART_KEYWORDS, default="unknown")
         severity_hint = self._severity_from_text(lower)
 
-        customer_messages = [
-            segment.split(":", 1)[1].strip()
-            for segment in transcript.split("|")
-            if segment.strip().lower().startswith("customer:") and ":" in segment
-        ]
+        customer_messages = []
+        for segment in transcript.split("|"):
+            stripped = segment.strip()
+            if stripped.lower().startswith("customer:") and ":" in stripped:
+                customer_messages.append(stripped.split(":", 1)[1].strip())
         claim_summary = customer_messages[-1] if customer_messages else transcript
         ambiguous = issue_type == "unknown" or object_part == "unknown"
 
@@ -171,7 +172,7 @@ class SimpleClaimInterpretationTool:
 class SimpleImageReviewTool:
     """Deterministic fallback image review tool based on path metadata."""
 
-    VALID_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    VALID_EXTENSIONS: ClassVar[set[str]] = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
     def run(self, claim: ClaimInput, interpretation: ClaimInterpretation) -> ImageReview:
         supporting_ids: List[str] = []
@@ -185,12 +186,11 @@ class SimpleImageReviewTool:
                 continue
             if path.suffix.lower() in self.VALID_EXTENSIONS:
                 supporting_ids.append(path.name)
-                lowered = path.name.lower()
-                if interpretation.issue_type != "unknown" and interpretation.issue_type in lowered:
+                if interpretation.issue_type != "unknown" and self._filename_contains_label(path, interpretation.issue_type):
                     detected_issue = interpretation.issue_type
-                if interpretation.object_part != "unknown" and interpretation.object_part.replace(" ", "_") in lowered:
+                if interpretation.object_part != "unknown" and self._filename_contains_label(path, interpretation.object_part):
                     detected_part = interpretation.object_part
-                if "blurry" in lowered or "dark" in lowered:
+                if "blurry" in path.name.lower() or "dark" in path.name.lower():
                     risk_flags.append("low_image_quality")
 
         return ImageReview(
@@ -200,6 +200,16 @@ class SimpleImageReviewTool:
             detected_object_part=detected_part,
             risk_flags=tuple(sorted(set(risk_flags))),
         )
+
+    @staticmethod
+    def _filename_contains_label(path: Path, label: str) -> bool:
+        tokens = [token for token in re.split(r"[^a-z0-9]+", path.stem.lower()) if token]
+        label_tokens = [token for token in re.split(r"[^a-z0-9]+", label.lower()) if token]
+        if not label_tokens:
+            return False
+        joined_tokens = "_".join(tokens)
+        joined_label = "_".join(label_tokens)
+        return joined_label in joined_tokens or all(token in tokens for token in label_tokens)
 
 
 class SimpleHistoryRiskTool:
@@ -235,12 +245,8 @@ class SimpleHistoryRiskTool:
         if flags is None:
             return []
         if isinstance(flags, list):
-            return [
-                token
-                for item in flags
-                for token in [str(item).strip().lower()]
-                if token not in ignored_tokens
-            ]
+            normalized = [str(item).strip().lower() for item in flags]
+            return [token for token in normalized if token not in ignored_tokens]
         if isinstance(flags, str):
             return [
                 item.strip().lower()
@@ -355,12 +361,7 @@ class SupervisorAgent:
     @staticmethod
     def _normalize_image_paths(image_paths: Any) -> List[str]:
         if isinstance(image_paths, str):
-            separators = ["|", ","]
-            normalized = [image_paths]
-            for sep in separators:
-                if sep in image_paths:
-                    normalized = [segment.strip() for segment in image_paths.split(sep)]
-                    break
+            normalized = [segment.strip() for segment in re.split(r"[|,]", image_paths)]
             return [path for path in normalized if path]
         if isinstance(image_paths, Sequence):
             return [str(path).strip() for path in image_paths if str(path).strip()]
