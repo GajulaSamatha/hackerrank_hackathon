@@ -25,7 +25,7 @@ class SupervisorAgentTests(unittest.TestCase):
         self.assertEqual(output.issue_type, "dent")
         self.assertEqual(output.object_part, "rear bumper")
         self.assertTrue(output.valid_image)
-        self.assertEqual(output.supporting_image_ids, ["rear_bumper_dent.jpg"])
+        self.assertEqual(output.supporting_image_ids, ("rear_bumper_dent.jpg",))
 
     def test_routes_to_manual_review_when_no_valid_images(self) -> None:
         claim = ClaimInput(

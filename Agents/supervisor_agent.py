@@ -38,17 +38,17 @@ class ImageReview:
     """Image analysis output used by the supervisor."""
 
     valid_image: bool
-    supporting_image_ids: List[str]
+    supporting_image_ids: tuple[str, ...]
     detected_issue_type: Optional[str]
     detected_object_part: Optional[str]
-    risk_flags: List[str]
+    risk_flags: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class HistoryRiskAssessment:
     """Risk context derived from user history."""
 
-    risk_flags: List[str]
+    risk_flags: tuple[str, ...]
     severity_modifier: Optional[str]
     rationale: str
 
@@ -67,12 +67,12 @@ class SupervisorOutput:
 
     evidence_standard_met: bool
     evidence_standard_met_reason: str
-    risk_flags: List[str]
+    risk_flags: tuple[str, ...]
     issue_type: str
     object_part: str
     claim_status: str
     claim_status_justification: str
-    supporting_image_ids: List[str]
+    supporting_image_ids: tuple[str, ...]
     valid_image: bool
     severity: str
 
@@ -195,10 +195,10 @@ class SimpleImageReviewTool:
 
         return ImageReview(
             valid_image=bool(supporting_ids),
-            supporting_image_ids=supporting_ids,
+            supporting_image_ids=tuple(supporting_ids),
             detected_issue_type=detected_issue,
             detected_object_part=detected_part,
-            risk_flags=sorted(set(risk_flags)),
+            risk_flags=tuple(sorted(set(risk_flags))),
         )
 
 
@@ -208,7 +208,7 @@ class SimpleHistoryRiskTool:
     def run(self, user_id: str, user_history_row: Optional[Mapping[str, Any]]) -> HistoryRiskAssessment:
         if not user_history_row:
             return HistoryRiskAssessment(
-                risk_flags=[],
+                risk_flags=(),
                 severity_modifier=None,
                 rationale=f"No user history found for user_id={user_id}.",
             )
@@ -224,7 +224,7 @@ class SimpleHistoryRiskTool:
 
         severity_modifier = "high" if (rejected_count >= 5 or "fraud_suspected" in risk_flags) else None
         return HistoryRiskAssessment(
-            risk_flags=sorted(set(risk_flags)),
+            risk_flags=tuple(sorted(set(risk_flags))),
             severity_modifier=severity_modifier,
             rationale=str(user_history_row.get("history_summary") or "Risk derived from historical claim profile."),
         )
@@ -319,7 +319,7 @@ class SupervisorAgent:
         evidence = self.evidence_tool.run(claim, interpretation, image_review, evidence_requirement_row)
 
         issue_type, object_part, conflict_flags = self._resolve_issue_and_part(interpretation, image_review)
-        risk_flags = sorted(set(history.risk_flags + image_review.risk_flags + conflict_flags))
+        risk_flags = tuple(sorted(set(history.risk_flags + image_review.risk_flags + tuple(conflict_flags))))
 
         severity = history.severity_modifier or interpretation.severity_hint
         claim_status, justification = self._determine_status(evidence, risk_flags, history.rationale)
